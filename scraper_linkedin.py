@@ -164,161 +164,25 @@ def get_company_size(company_name, company_url, cache):
     if not company_name or not company_url:
         return ''
     
-    # 检查缓存
     if company_name in cache:
-        cached_value = cache[company_name]
-        if cached_value:
-            # 如果缓存的是旧格式（文本或JSON），尝试提取数字
-            if isinstance(cached_value, str):
-                # 如果已经是纯数字，直接返回
-                if cached_value.isdigit():
-                    return cached_value
-                
-                # 尝试从JSON中提取
-                if '@context' in cached_value or 'numberOfEmployees' in cached_value:
-                    try:
-                        import json
-                        # 尝试解析JSON
-                        json_match = re.search(r'\{.*"numberOfEmployees".*\}', cached_value, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group(0)
-                            data = json.loads(json_str)
-                            if isinstance(data, dict):
-                                # 查找 numberOfEmployees
-                                if 'numberOfEmployees' in data:
-                                    emp_data = data['numberOfEmployees']
-                                    if isinstance(emp_data, dict) and 'value' in emp_data:
-                                        employee_num = int(emp_data['value'])
-                                        cache[company_name] = str(employee_num)
-                                        save_cache(cache)
-                                        return str(employee_num)
-                                # 如果是graph数组，遍历查找
-                                if '@graph' in data and isinstance(data['@graph'], list):
-                                    for item in data['@graph']:
-                                        if isinstance(item, dict) and 'numberOfEmployees' in item:
-                                            emp_data = item['numberOfEmployees']
-                                            if isinstance(emp_data, dict) and 'value' in emp_data:
-                                                employee_num = int(emp_data['value'])
-                                                cache[company_name] = str(employee_num)
-                                                save_cache(cache)
-                                                return str(employee_num)
-                    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-                        pass
-                
-                # 只匹配紧邻"employee"的数字
-                employee_pattern = re.search(r'(\d{1,2}(?:,\d{3})+|\d{1,3})\s*employees?', cached_value, re.I)
-                if employee_pattern:
-                    employee_count = employee_pattern.group(1).replace(',', '').replace('.', '')
-                    try:
-                        employee_num = int(employee_count)
-                        if 1 <= employee_num <= 1000000 and not (2020 <= employee_num <= 2030):
-                            cache[company_name] = str(employee_num)
-                            save_cache(cache)
-                            return str(employee_num)
-                    except ValueError:
-                        pass
-                
-                # 如果无法提取，清除缓存并返回空
-                cache[company_name] = ''
-                save_cache(cache)
-                return ''
-            # 如果已经是数字格式，直接返回
-            return str(cached_value)
+        return cache[company_name]
     
     full_url = "https://www.linkedin.com" + company_url if company_url.startswith("/company/") else company_url
     html = zenrows_get(full_url)
     if not html:
-        cache[company_name] = ''
-        save_cache(cache)
         return ''
     
     soup = BeautifulSoup(html, "html.parser")
     
-    # 方法1: 优先从JSON-LD (schema.org) 中提取
-    import json
-    json_scripts = soup.find_all('script', type='application/ld+json')
-    for script in json_scripts:
-        try:
-            data = json.loads(script.string)
-            # 处理单个对象或数组
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, dict) and item.get('@type') == 'Organization':
-                        if 'numberOfEmployees' in item:
-                            emp_data = item['numberOfEmployees']
-                            if isinstance(emp_data, dict) and 'value' in emp_data:
-                                employee_num = int(emp_data['value'])
-                                cache[company_name] = str(employee_num)
-                                save_cache(cache)
-                                return str(employee_num)
-            elif isinstance(data, dict) and data.get('@type') == 'Organization':
-                if 'numberOfEmployees' in data:
-                    emp_data = data['numberOfEmployees']
-                    if isinstance(emp_data, dict) and 'value' in emp_data:
-                        employee_num = int(emp_data['value'])
-                        cache[company_name] = str(employee_num)
-                        save_cache(cache)
-                        return str(employee_num)
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-            continue
-    
-    # 方法2: 查找标准的公司规模标签
     tag = soup.find("dd", class_="org-about-company-module__company-size-definition-text")
-    
-    # 方法3: 查找包含 "employees" 的文本节点
     if not tag:
-        tag = soup.find(string=re.compile(r"employees", re.I))
-        if tag and tag.parent:
-            tag = tag.parent
-    
-    # 方法4: 查找包含员工数量的其他常见选择器
-    if not tag:
-        # 尝试查找包含数字和"employee"的元素
-        for elem in soup.find_all(string=re.compile(r'\d+.*employee', re.I)):
-            if elem.parent:
-                tag = elem.parent
-                break
-    
-    # 方法5: 查找包含 "View all X employees" 或类似文本的链接
-    if not tag:
-        for link in soup.find_all('a', href=True):
-            link_text = link.get_text(strip=True)
-            if re.search(r'(view|discover).*\d+.*employee', link_text, re.I) or re.search(r'\d+.*employee', link_text, re.I):
-                tag = link
-                break
-    
-    # 方法6: 查找包含员工数量的span或div
-    if not tag:
-        for elem in soup.find_all(['span', 'div', 'p']):
-            text = elem.get_text(strip=True)
-            if re.search(r'\d+.*employee', text, re.I):
-                tag = elem
-                break
+        tag = soup.find(string=re.compile(r"employees"))
     
     if tag:
-        if hasattr(tag, "get_text"):
-            text = tag.get_text(strip=True)
-        else:
-            text = str(tag).strip()
-        
-        # 只匹配紧邻"employee"的数字，避免匹配年份
-        # 匹配格式：数字 + "employees" 或 "employee"
-        employee_pattern = re.search(r'(\d{1,2}(?:,\d{3})+|\d{1,3})\s*employees?', text, re.I)
-        if employee_pattern:
-            employee_count = employee_pattern.group(1).replace(',', '').replace('.', '')
-            try:
-                employee_num = int(employee_count)
-                # 只接受合理的员工数量（1-100万，排除年份）
-                if 1 <= employee_num <= 1000000 and not (2020 <= employee_num <= 2030):
-                    cache[company_name] = str(employee_num)
-                    save_cache(cache)
-                    return str(employee_num)
-            except ValueError:
-                pass
-        
-        cache[company_name] = ''
+        text = tag.get_text(strip=True) if hasattr(tag, "get_text") else str(tag).strip()
+        cache[company_name] = text
         save_cache(cache)
-        return ''
+        return text
     
     cache[company_name] = ''
     save_cache(cache)
@@ -504,9 +368,9 @@ def enrich_job_details(job_list):
                 else:
                     job["薪资要求"] = cleaned_salary
                 
-                # 年薪预估值
+                # 年薪预估值（前面加$符号）
                 if annual_estimate:
-                    job["年薪预估值"] = annual_estimate
+                    job["年薪预估值"] = f"${annual_estimate}"
                 else:
                     job["年薪预估值"] = ''
             else:
