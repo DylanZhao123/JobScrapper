@@ -160,30 +160,139 @@ def parse_salary(salary_text):
 
 
 #公司规模抓取
+def extract_employee_number(text):
+    """从文本中提取纯数字（员工数量）"""
+    if not text:
+        return ''
+    
+    # 匹配紧邻"employee"的数字
+    employee_pattern = re.search(r'(\d{1,2}(?:,\d{3})+|\d{1,3})\s*employees?', text, re.I)
+    if employee_pattern:
+        employee_count = employee_pattern.group(1).replace(',', '').replace('.', '')
+        try:
+            employee_num = int(employee_count)
+            if 1 <= employee_num <= 1000000 and not (2020 <= employee_num <= 2030):
+                return str(employee_num)
+        except ValueError:
+            pass
+    
+    return ''
+
+def normalize_company_url(company_url):
+    """标准化公司URL，将不同国家的LinkedIn URL转换为www.linkedin.com"""
+    if not company_url:
+        return ''
+    
+    # 移除查询参数
+    if '?' in company_url:
+        company_url = company_url.split('?')[0]
+    
+    # 如果是完整URL，提取路径
+    if company_url.startswith('http'):
+        match = re.search(r'/company/([^/?]+)', company_url)
+        if match:
+            return f"/company/{match.group(1)}"
+        return company_url
+    
+    # 如果已经是路径格式，直接返回
+    if company_url.startswith('/company/'):
+        return company_url
+    
+    return company_url
+
 def get_company_size(company_name, company_url, cache):
+    """
+    获取公司规模（员工数量）
+    使用多层级搜索策略，返回纯数字格式
+    """
     if not company_name or not company_url:
         return ''
     
+    # 检查缓存
     if company_name in cache:
-        return cache[company_name]
+        cached_value = cache[company_name]
+        if cached_value:
+            # 如果已经是纯数字，直接返回
+            if isinstance(cached_value, str) and cached_value.isdigit():
+                return cached_value
+            # 如果是数字类型，转换为字符串返回
+            if isinstance(cached_value, (int, float)):
+                return str(int(cached_value))
+            # 如果是文本格式，尝试提取数字
+            num = extract_employee_number(str(cached_value))
+            if num:
+                return num
     
-    full_url = "https://www.linkedin.com" + company_url if company_url.startswith("/company/") else company_url
+    # 标准化URL（将不同国家的LinkedIn URL统一转换为www.linkedin.com）
+    normalized_url = normalize_company_url(company_url)
+    
+    # 访问公司页面
+    full_url = "https://www.linkedin.com" + normalized_url if normalized_url.startswith("/company/") else normalized_url
     html = zenrows_get(full_url)
     if not html:
+        cache[company_name] = ''
+        save_cache(cache)
         return ''
     
     soup = BeautifulSoup(html, "html.parser")
     
+    # 方法1: JSON-LD优先（最快最准确）
+    json_scripts = soup.find_all('script', type='application/ld+json')
+    for script in json_scripts:
+        try:
+            data = json.loads(script.string)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get('@type') == 'Organization':
+                        if 'numberOfEmployees' in item:
+                            emp_data = item['numberOfEmployees']
+                            if isinstance(emp_data, dict) and 'value' in emp_data:
+                                employee_num = int(emp_data['value'])
+                                cache[company_name] = str(employee_num)
+                                save_cache(cache)
+                                return str(employee_num)
+            elif isinstance(data, dict) and data.get('@type') == 'Organization':
+                if 'numberOfEmployees' in data:
+                    emp_data = data['numberOfEmployees']
+                    if isinstance(emp_data, dict) and 'value' in emp_data:
+                        employee_num = int(emp_data['value'])
+                        cache[company_name] = str(employee_num)
+                        save_cache(cache)
+                        return str(employee_num)
+        except:
+            continue
+    
+    # 方法2: 标准dd标签
     tag = soup.find("dd", class_="org-about-company-module__company-size-definition-text")
-    if not tag:
-        tag = soup.find(string=re.compile(r"employees"))
-    
     if tag:
-        text = tag.get_text(strip=True) if hasattr(tag, "get_text") else str(tag).strip()
-        cache[company_name] = text
-        save_cache(cache)
-        return text
+        text = tag.get_text(strip=True)
+        num = extract_employee_number(text)
+        if num:
+            cache[company_name] = num
+            save_cache(cache)
+            return num
     
+    # 方法3: 查找所有包含employees的元素
+    for elem in soup.find_all(['span', 'div', 'p', 'li', 'a', 'dt', 'dd']):
+        text = elem.get_text(strip=True)
+        if re.search(r'\d+.*employee', text, re.I):
+            num = extract_employee_number(text)
+            if num:
+                cache[company_name] = num
+                save_cache(cache)
+                return num
+    
+    # 方法4: 字符串节点
+    tag = soup.find(string=re.compile(r"employees", re.I))
+    if tag and tag.parent:
+        text = tag.parent.get_text(strip=True)
+        num = extract_employee_number(text)
+        if num:
+            cache[company_name] = num
+            save_cache(cache)
+            return num
+    
+    # 如果找不到，缓存空值
     cache[company_name] = ''
     save_cache(cache)
     return ''
