@@ -2,6 +2,7 @@ import requests
 import time
 import re
 import json
+import urllib.parse
 from bs4 import BeautifulSoup
 from config import (
     LOCATION, MAX_PAGES, REQUEST_DELAY, ZENROWS_API_KEY, ZENROWS_BASE_URL,
@@ -13,12 +14,30 @@ def zenrows_get(url, retries=3, delay=2):
     """ZenRows request with retry mechanism"""
     for attempt in range(retries):
         try:
-            params = {'url': url, 'apikey': ZENROWS_API_KEY}
+            # For Indeed, may need to enable JS rendering
+            params = {
+                'url': url,
+                'apikey': ZENROWS_API_KEY,
+                'js_render': 'true',  # Indeed may need JS rendering
+                'premium_proxy': 'true',  # Use premium proxy
+            }
             r = requests.get(ZENROWS_BASE_URL, params=params, timeout=30)
             if r.status_code == 200:
                 return r.text
+            elif r.status_code == 400:
+                # 400 error, try without extra parameters
+                print(f"ZenRows 400错误，尝试简化参数...")
+                params_simple = {'url': url, 'apikey': ZENROWS_API_KEY}
+                r2 = requests.get(ZENROWS_BASE_URL, params=params_simple, timeout=30)
+                if r2.status_code == 200:
+                    return r2.text
+                else:
+                    print(f"ZenRows 请求失败[{r2.status_code}] 第{attempt+1}次: {url}")
+                    print(f"错误响应: {r2.text[:200]}")
             else:
                 print(f"ZenRows 请求失败[{r.status_code}] 第{attempt+1}次: {url}")
+                if r.status_code >= 400:
+                    print(f"错误响应: {r.text[:200]}")
         except Exception as e:
             print(f"请求异常 第{attempt+1}次: {str(e)}")
         time.sleep(delay * (attempt + 1))
@@ -37,54 +56,120 @@ def save_cache(cache):
         json.dump(cache, f, ensure_ascii=False, indent=2)
 
 
-# Scrape LinkedIn job listings
-def fetch_linkedin_list(keyword):
+# Scrape Indeed job listings
+def fetch_indeed_list(keyword):
     results = []
     for page in range(MAX_PAGES):
-        start = page * 25
+        start = page * 10  # Indeed usually has 10 jobs per page
         if len(results) >= LIST_LIMIT:
             break
-        url = f"https://www.linkedin.com/jobs/search?keywords={keyword.replace(' ', '%20')}&location={LOCATION.replace(' ', '%20')}&start={start}"
+        
+        # Indeed search URL format - use urllib.parse for proper encoding
+        query_params = {
+            'q': keyword,
+            'l': LOCATION,
+            'start': str(start)
+        }
+        # Build URL, ensure proper encoding
+        base_url = "https://www.indeed.com/jobs"
+        url = f"{base_url}?{urllib.parse.urlencode(query_params)}"
+        
         print(f"抓取列表页：{keyword} 第 {page + 1} 页")
+        print(f"URL: {url}")
         html = zenrows_get(url)
         if not html:
             continue
+        
         soup = BeautifulSoup(html, 'html.parser')
-        cards = soup.find_all('div', class_='base-card')
+        
+        # Indeed job card selectors (may need adjustment due to page structure changes)
+        # Try multiple possible selectors
+        cards = soup.find_all('div', class_='job_seen_beacon') or \
+                soup.find_all('div', {'data-jk': True}) or \
+                soup.find_all('a', {'data-jk': True})
+        
         for card in cards:
             if len(results) >= LIST_LIMIT:
                 break
-            title = card.find('h3', class_='base-search-card__title')
-            company = card.find('h4', class_='base-search-card__subtitle')
-            location = card.find('span', class_='job-search-card__location')
-            date = card.find('time')
-            link = card.find('a', class_='base-card__full-link')
+            
+            # Extract job title
+            title_elem = card.find('h2', class_='jobTitle') or \
+                        card.find('a', class_='jcs-JobTitle') or \
+                        card.find('span', {'id': re.compile(r'jobTitle')})
+            title = title_elem.get_text(strip=True) if title_elem else ''
+            
+            # Extract company name
+            company_elem = card.find('span', class_='companyName') or \
+                          card.find('a', {'data-testid': 'company-name'}) or \
+                          card.find('span', {'data-testid': 'company-name'})
+            company = company_elem.get_text(strip=True) if company_elem else ''
+            
+            # Extract location
+            location_elem = card.find('div', class_='companyLocation') or \
+                           card.find('div', {'data-testid': 'job-location'}) or \
+                           card.find('span', class_='location')
+            location = location_elem.get_text(strip=True) if location_elem else ''
+            
+            # Extract posting date
+            date_elem = card.find('span', class_='date') or \
+                       card.find('span', {'data-testid': 'myJobsStateDate'})
+            date_text = date_elem.get_text(strip=True) if date_elem else ''
+            
+            # Extract job link
+            link_elem = card.find('a', {'data-jk': True}) or \
+                       card.find('a', class_='jcs-JobTitle') or \
+                       card.find('a', href=re.compile(r'/viewjob'))
+            
+            job_link = ''
+            if link_elem:
+                if link_elem.has_attr('href'):
+                    href = link_elem['href']
+                    if href.startswith('/'):
+                        job_link = f"https://www.indeed.com{href}"
+                    else:
+                        job_link = href
+                elif link_elem.has_attr('data-jk'):
+                    jk = link_elem['data-jk']
+                    job_link = f"https://www.indeed.com/viewjob?jk={jk}"
+            
+            # Extract salary (may be shown on listing page)
+            salary_elem = card.find('span', class_='salary-snippet') or \
+                         card.find('div', class_='salary-snippet-container') or \
+                         card.find('span', {'data-testid': 'attribute_snippet_testid'})
+            salary_text = salary_elem.get_text(strip=True) if salary_elem else ''
+            
             job = {
-                "职位名称": title.get_text(strip=True) if title else '',
-                "公司名称": company.get_text(strip=True) if company else '',
+                "职位名称": title,
+                "公司名称": company,
                 "专业要求": '',
-                "地点": location.get_text(strip=True) if location else '',
-                "薪资要求": '',
+                "地点": location,
+                "薪资要求": salary_text,
                 "年薪预估值": '',
                 "工作描述": '',
                 "团队规模/业务线规模": '',
                 "公司规模": '',
-                "职位发布时间": date['datetime'] if date and date.has_attr('datetime') else '',
+                "职位发布时间": date_text,
                 "职位状态": 'Active',
-                "招聘平台": 'LinkedIn',
-                "职位链接": link['href'] if link and link.has_attr('href') else ''
+                "招聘平台": 'Indeed',
+                "职位链接": job_link
             }
             results.append(job)
+        
         time.sleep(REQUEST_DELAY)
     return results[:LIST_LIMIT]
 
 
-# Salary parsing and estimation
+# Salary parsing and estimation (reuse LinkedIn logic)
 def parse_salary(salary_text):
+    """
+    解析薪资文本，返回 (薪资类型, 年薪预估值)
+    薪资类型: '年薪', '月薪', '时薪', '未知'
+    """
     if not salary_text:
         return ('未知', '')
     
     text_lower = salary_text.lower()
+    
     def extract_number(s):
         s = s.replace(',', '').replace('$', '').strip()
         multiplier = 1
@@ -99,9 +184,7 @@ def parse_salary(salary_text):
         except:
             return None
     
-    # Extract all numbers - improved regex to handle various formats
     numbers = []
-    # Match formats like $150,000.00 or $150k or 150000
     for match in re.finditer(r'\$?\s*(\d{1,3}(?:[,\.]\d{3})*(?:\.\d{2})?)\s*([kKmM]?)\b', salary_text):
         num_str = match.group(1).replace(',', '')
         suffix = match.group(2)
@@ -117,7 +200,7 @@ def parse_salary(salary_text):
     is_monthly = any(x in text_lower for x in ['month', 'mo', '/m', 'per month', 'monthly'])
     is_hourly = any(x in text_lower for x in ['hour', 'hr', '/h', 'per hour', 'hourly', '/hr'])
     
-    # If no explicit identifier, infer from value range (annual usually >50000, monthly <50000, hourly <200)
+    # If no explicit identifier, infer from value range
     if not (is_annual or is_monthly or is_hourly):
         avg_num = sum(numbers) / len(numbers)
         if avg_num < 200:
@@ -129,19 +212,16 @@ def parse_salary(salary_text):
     
     # Calculate annual salary estimate (round to tens)
     def round_to_tens(num):
-        """Round number to tens, e.g., 165123 -> 165120"""
         return round(num / 10) * 10
     
     if is_annual:
         if len(numbers) >= 2:
-            # Range, take midpoint
             annual_estimate = (min(numbers) + max(numbers)) / 2
         else:
             annual_estimate = numbers[0]
         return ('年薪', round_to_tens(annual_estimate))
     elif is_monthly:
         if len(numbers) >= 2:
-            # Monthly range, take midpoint then multiply by 12
             monthly_avg = (min(numbers) + max(numbers)) / 2
             annual_estimate = monthly_avg * 12
         else:
@@ -149,7 +229,6 @@ def parse_salary(salary_text):
         return ('月薪', round_to_tens(annual_estimate))
     elif is_hourly:
         if len(numbers) >= 2:
-            # Hourly range, take midpoint then multiply by 2080 (40 hours * 52 weeks)
             hourly_avg = (min(numbers) + max(numbers)) / 2
             annual_estimate = hourly_avg * 40 * 52
         else:
@@ -159,13 +238,12 @@ def parse_salary(salary_text):
         return ('未知', '')
 
 
-# Company size scraping
+# Company size scraping (reuse LinkedIn logic, but adapt for Indeed company pages)
 def extract_employee_number(text):
     """Extract pure number (employee count) from text"""
     if not text:
         return ''
     
-    # Match numbers adjacent to "employee"
     employee_pattern = re.search(r'(\d{1,2}(?:,\d{3})+|\d{1,3})\s*employees?', text, re.I)
     if employee_pattern:
         employee_count = employee_pattern.group(1).replace(',', '').replace('.', '')
@@ -178,32 +256,9 @@ def extract_employee_number(text):
     
     return ''
 
-def normalize_company_url(company_url):
-    """标准化公司URL，将不同国家的LinkedIn URL转换为www.linkedin.com"""
-    if not company_url:
-        return ''
-    
-    # Remove query parameters
-    if '?' in company_url:
-        company_url = company_url.split('?')[0]
-    
-    # If full URL, extract path
-    if company_url.startswith('http'):
-        match = re.search(r'/company/([^/?]+)', company_url)
-        if match:
-            return f"/company/{match.group(1)}"
-        return company_url
-    
-    # If already in path format, return directly
-    if company_url.startswith('/company/'):
-        return company_url
-    
-    return company_url
-
-def get_company_size(company_name, company_url, cache):
+def get_company_size_indeed(company_name, company_url, cache):
     """
-    获取公司规模（员工数量）
-    使用多层级搜索策略，返回纯数字格式
+    从Indeed公司页面获取公司规模（员工数量）
     """
     if not company_name or not company_url:
         return ''
@@ -212,23 +267,16 @@ def get_company_size(company_name, company_url, cache):
     if company_name in cache:
         cached_value = cache[company_name]
         if cached_value:
-            # If already a pure number, return directly
             if isinstance(cached_value, str) and cached_value.isdigit():
                 return cached_value
-            # If numeric type, convert to string
             if isinstance(cached_value, (int, float)):
                 return str(int(cached_value))
-            # If text format, try to extract number
             num = extract_employee_number(str(cached_value))
             if num:
                 return num
     
-    # Normalize URL (convert LinkedIn URLs from different countries to www.linkedin.com)
-    normalized_url = normalize_company_url(company_url)
-    
-    # Access company page
-    full_url = "https://www.linkedin.com" + normalized_url if normalized_url.startswith("/company/") else normalized_url
-    html = zenrows_get(full_url)
+    # Access Indeed company page
+    html = zenrows_get(company_url)
     if not html:
         cache[company_name] = ''
         save_cache(cache)
@@ -236,45 +284,22 @@ def get_company_size(company_name, company_url, cache):
     
     soup = BeautifulSoup(html, "html.parser")
     
-    # Method 1: JSON-LD first (fastest and most accurate)
-    json_scripts = soup.find_all('script', type='application/ld+json')
-    for script in json_scripts:
-        try:
-            data = json.loads(script.string)
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, dict) and item.get('@type') == 'Organization':
-                        if 'numberOfEmployees' in item:
-                            emp_data = item['numberOfEmployees']
-                            if isinstance(emp_data, dict) and 'value' in emp_data:
-                                employee_num = int(emp_data['value'])
-                                cache[company_name] = str(employee_num)
-                                save_cache(cache)
-                                return str(employee_num)
-            elif isinstance(data, dict) and data.get('@type') == 'Organization':
-                if 'numberOfEmployees' in data:
-                    emp_data = data['numberOfEmployees']
-                    if isinstance(emp_data, dict) and 'value' in emp_data:
-                        employee_num = int(emp_data['value'])
-                        cache[company_name] = str(employee_num)
-                        save_cache(cache)
-                        return str(employee_num)
-        except:
-            continue
+    # Employee count on Indeed company pages may be in multiple locations
+    # Method 1: Find text containing employee count
+    employee_texts = soup.find_all(string=re.compile(r'\d+.*employee', re.I))
+    for text_node in employee_texts:
+        if text_node.parent:
+            text = text_node.parent.get_text(strip=True)
+            num = extract_employee_number(text)
+            if num:
+                cache[company_name] = num
+                save_cache(cache)
+                return num
     
-    # Method 2: Standard dd tag
-    tag = soup.find("dd", class_="org-about-company-module__company-size-definition-text")
-    if tag:
-        text = tag.get_text(strip=True)
-        num = extract_employee_number(text)
-        if num:
-            cache[company_name] = num
-            save_cache(cache)
-            return num
-    
-    # Method 3: Find all elements containing "employees"
-    for elem in soup.find_all(['span', 'div', 'p', 'li', 'a', 'dt', 'dd']):
-        text = elem.get_text(strip=True)
+    # Method 2: Find company info card
+    info_sections = soup.find_all(['div', 'span'], class_=re.compile(r'company|info|about', re.I))
+    for section in info_sections:
+        text = section.get_text(strip=True)
         if re.search(r'\d+.*employee', text, re.I):
             num = extract_employee_number(text)
             if num:
@@ -282,35 +307,23 @@ def get_company_size(company_name, company_url, cache):
                 save_cache(cache)
                 return num
     
-    # Method 4: String node
-    tag = soup.find(string=re.compile(r"employees", re.I))
-    if tag and tag.parent:
-        text = tag.parent.get_text(strip=True)
-        num = extract_employee_number(text)
-        if num:
-            cache[company_name] = num
-            save_cache(cache)
-            return num
-    
-    # If not found, cache empty value
     cache[company_name] = ''
     save_cache(cache)
     return ''
 
 
 def enrich_job_details(job_list):
+    """丰富职位详情（工作描述、专业要求、薪资、公司规模等）"""
     cache = load_cache()
     for idx, job in enumerate(job_list):
         url = job.get("职位链接")
         if not url:
-            # Even without link, keep record with empty detail fields
             if (idx + 1) % 5 == 0 or idx == len(job_list) - 1:
                 print(f"详情页进度：{idx + 1}/{len(job_list)}")
             continue
 
         html = zenrows_get(url)
         if not html:
-            # Even if HTML cannot be fetched, keep record
             if (idx + 1) % 5 == 0 or idx == len(job_list) - 1:
                 print(f"详情页进度：{idx + 1}/{len(job_list)}")
             continue
@@ -318,14 +331,15 @@ def enrich_job_details(job_list):
         soup = BeautifulSoup(html, 'html.parser')
 
         # Job description
-        desc = soup.find('div', class_='show-more-less-html__markup')
+        desc = soup.find('div', {'id': 'jobDescriptionText'}) or \
+               soup.find('div', class_='jobsearch-jobDescriptionText') or \
+               soup.find('div', class_='jobsearch-JobComponent-description')
         description = desc.get_text(separator=' ', strip=True) if desc else ''
         job["工作描述"] = description
 
-        # Professional requirements - improved extraction logic
+        # Professional requirements - reuse LinkedIn extraction logic
         requirements_text = ''
         
-        # Method 1: Find explicit sections like "Requirements", "Qualifications", "Required"
         req_patterns = [
             r'(?:requirements?|qualifications?|required|must have|minimum requirements?)[\s:]*\n?([^\n]{100,800})',
             r"(?:what you['']?ll need|what we['']?re looking for|you should have)[\s:]*\n?([^\n]{100,800})",
@@ -336,15 +350,13 @@ def enrich_job_details(job_list):
             matches = re.finditer(pattern, description, re.IGNORECASE | re.MULTILINE)
             for match in matches:
                 req_section = match.group(1).strip()
-                # Clean text, remove extra whitespace
                 req_section = re.sub(r'\s+', ' ', req_section)
-                if len(req_section) > 50:  # Ensure sufficient content
-                    requirements_text = req_section[:500]  # Limit length
+                if len(req_section) > 50:
+                    requirements_text = req_section[:500]
                     break
             if requirements_text:
                 break
         
-        # Method 2: If no explicit section found, try extracting sentences with key skills/requirements
         if not requirements_text:
             skill_sentences = []
             sentences = re.split(r'[.!?]\s+', description)
@@ -355,12 +367,12 @@ def enrich_job_details(job_list):
                     'proficiency', 'experience with', 'knowledge of', 'familiar with',
                     'required', 'must have', 'should have', 'qualifications'
                 ]):
-                    if len(sent.strip()) > 30:  
+                    if len(sent.strip()) > 30:
                         skill_sentences.append(sent.strip())
             
             if skill_sentences:
-                requirements_text = ' | '.join(skill_sentences[:5])  
-                requirements_text = requirements_text[:500] 
+                requirements_text = ' | '.join(skill_sentences[:5])
+                requirements_text = requirements_text[:500]
         
         if not requirements_text and description:
             first_half = description[:len(description)//2]
@@ -372,80 +384,41 @@ def enrich_job_details(job_list):
         # Salary logic
         salary_raw = ''
         
-        # Method 1: Find salary elements containing $ symbol
-        salary_tags = soup.find_all(string=re.compile(r'\$'))
-        for tag in salary_tags:
-            parent = tag.parent
-            if parent:
-                text = parent.get_text(strip=True)
-                if '$' in text and (re.search(r'\d', text)):
-                    salary_raw = text
-                    break
+        # Method 1: Find salary section
+        salary_section = soup.find('div', {'id': 'salaryInfoAndJobType'}) or \
+                        soup.find('div', class_='jobsearch-JobMetadataHeader-item') or \
+                        soup.find('span', class_='jobsearch-JobMetadataHeader-iconLabel')
+        if salary_section:
+            salary_text = salary_section.get_text(strip=True)
+            if '$' in salary_text and re.search(r'\d', salary_text):
+                salary_raw = salary_text
         
-        # Method 2: Find common salary selectors
-        if not salary_raw:
-            # Try finding elements with keywords like "salary", "compensation"
-            for elem in soup.find_all(['span', 'div', 'li', 'p']):
-                text = elem.get_text(strip=True)
-                if '$' in text and re.search(r'\d', text):
-                    parent_text = ''
-                    if elem.parent:
-                        parent_text = elem.parent.get_text(strip=True).lower()
-                    if any(keyword in parent_text for keyword in ['salary', 'compensation', 'pay', 'wage', 'range']):
-                        salary_raw = text
-                        break
-        
-        # Method 3: Find salary information in description
+        # Method 2: Find salary information in description
         if not salary_raw and description:
             salary_matches = re.findall(r'\$[\d,]+(?:[kKmM])?\s*[-–—]\s*\$[\d,]+(?:[kKmM])?', description)
             if not salary_matches:
                 salary_matches = re.findall(r'\$[\d,]+(?:[kKmM])?', description)
             if salary_matches:
-                # Take first matched salary information
                 salary_raw = salary_matches[0]
                 idx = description.find(salary_raw)
                 if idx >= 0:
                     context = description[max(0, idx-50):idx+len(salary_raw)+50]
-                    # If context contains time unit, add to salary text
                     if re.search(r'(year|month|hour|annual|monthly|hourly)', context, re.I):
                         salary_raw = context.strip()
         
+        # If listing page already has salary, prioritize it
+        if not salary_raw and job.get("薪资要求"):
+            salary_raw = job["薪资要求"]
+        
         if salary_raw:
             def clean_salary_text(text):
-                # Remove JSON format data (if contains @context, @type, etc.)
-                if '@context' in text or '@type' in text or 'schema.org' in text:
-                    # Try extracting salary information from JSON
-                    import json
-                    try:
-                        # Find baseSalary field
-                        if 'baseSalary' in text:
-                            salary_match = re.search(r'"baseSalary"[^}]*"minValue":(\d+)[^}]*"maxValue":(\d+)', text)
-                            if salary_match:
-                                min_val = int(salary_match.group(1))
-                                max_val = int(salary_match.group(2))
-                                return f"${min_val:,} - ${max_val:,}"
-                        # Find salary range in value field
-                        salary_match = re.search(r'"value"[^}]*"minValue":(\d+)[^}]*"maxValue":(\d+)', text)
-                        if salary_match:
-                            min_val = int(salary_match.group(1))
-                            max_val = int(salary_match.group(2))
-                            return f"${min_val:,} - ${max_val:,}"
-                    except:
-                        pass
-                    return ''
-                
-                # Remove newlines and extra whitespace
                 text = re.sub(r'\s+', ' ', text)
                 text = text.strip()
-                
-                # Remove HTML tags
                 text = re.sub(r'<[^>]+>', '', text)
                 
-                # Keep only salary-related text (parts containing $ and numbers)
-                # Extract all salary ranges or single salary
                 salary_patterns = [
-                    r'\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?',  # Range
-                    r'\$[\d,]+(?:\.\d{2})?',  # Single
+                    r'\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?',
+                    r'\$[\d,]+(?:\.\d{2})?',
                 ]
                 
                 for pattern in salary_patterns:
@@ -463,13 +436,12 @@ def enrich_job_details(job_list):
                                 return f"{cleaned} (时薪)"
                         return cleaned
                 
-                return text[:200] 
+                return text[:200]
             
             cleaned_salary = clean_salary_text(salary_raw)
             
             if cleaned_salary:
                 salary_type, annual_estimate = parse_salary(cleaned_salary)
-                # If cleaned text already contains type annotation, don't add again
                 if '(年薪)' in cleaned_salary or '(月薪)' in cleaned_salary or '(时薪)' in cleaned_salary:
                     job["薪资要求"] = cleaned_salary
                 elif salary_type != '未知':
@@ -477,7 +449,6 @@ def enrich_job_details(job_list):
                 else:
                     job["薪资要求"] = cleaned_salary
                 
-                # Annual salary estimate (prepend $ symbol)
                 if annual_estimate:
                     job["年薪预估值"] = f"${annual_estimate}"
                 else:
@@ -489,11 +460,13 @@ def enrich_job_details(job_list):
             job["薪资要求"] = ''
             job["年薪预估值"] = ''
 
-        # Company homepage link
-        company_tag = soup.find('a', href=re.compile(r'/company/'))
-        if company_tag:
-            company_url = company_tag['href']
-            size = get_company_size(job["公司名称"], company_url, cache)
+        # Company homepage link (Indeed company page URL format)
+        company_name = job.get("公司名称", "")
+        if company_name:
+            # Indeed company page URL format: https://www.indeed.com/cmp/{company-name}
+            company_slug = company_name.lower().replace(' ', '-').replace('.', '').replace(',', '')
+            company_url = f"https://www.indeed.com/cmp/{company_slug}"
+            size = get_company_size_indeed(company_name, company_url, cache)
             job["公司规模"] = size
 
         if (idx + 1) % 5 == 0 or idx == len(job_list) - 1:
@@ -503,8 +476,8 @@ def enrich_job_details(job_list):
 
 
 # External interfaces
-def fetch_linkedin_jobs(keyword):
-    return fetch_linkedin_list(keyword)
+def fetch_indeed_jobs(keyword):
+    return fetch_indeed_list(keyword)
 
 def fetch_details_for_subset(unique_jobs):
     subset = unique_jobs[:DETAIL_LIMIT]
@@ -512,3 +485,4 @@ def fetch_details_for_subset(unique_jobs):
     enrich_job_details(subset)
     print("详情页抓取完成")
     return subset
+
