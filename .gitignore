@@ -7,21 +7,7 @@ __pycache__/
 env/
 venv/
 ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+.venv
 
 # Environment variables
 .env
@@ -34,22 +20,25 @@ wheels/
 *.swo
 *~
 
-# Outputs
+# Output directories
 outputs/
 *.xlsx
 *.json
-*.txt
+!example_output.xlsx
 
-# Checkpoints
+# Checkpoint files
 checkpoint.json
-stage1_raw_data.json
-stage1_unique_data.json
-stage2_detail_data.json
+stage1_*.json
+stage2_*.json
+*.cache.json
 
-# Logs
-*.log
+# Progress documentation (Chinese)
+progress.md
 
 # OS
 .DS_Store
 Thumbs.db
 
+# Logs
+*.log
+error_log.txt

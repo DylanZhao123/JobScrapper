@@ -29,9 +29,9 @@ def zenrows_get(url, retries=3, delay=2):
             if r.status_code == 200:
                 return r.text
             else:
-                print(f"ZenRows 请求失败[{r.status_code}] 第{attempt+1}次: {url}")
+                print(f"ZenRows request failed [{r.status_code}] attempt {attempt+1}: {url}")
         except Exception as e:
-            print(f"请求异常 第{attempt+1}次: {str(e)}")
+            print(f"Request exception attempt {attempt+1}: {str(e)}")
         time.sleep(delay * (attempt + 1))
     return None
 
@@ -60,7 +60,7 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
     # Build seen set from existing data (real-time deduplication)
     seen = set()
     for job in all_jobs:
-        key = (job.get("职位名称", ""), job.get("公司名称", ""))
+        key = (job.get("Job Title", ""), job.get("Company Name", ""))
         if key[0] and key[1]:  # Ensure job title and company name are not empty
             seen.add(key)
     
@@ -71,13 +71,13 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
         # Combine keywords with OR: "keyword1" OR "keyword2" OR ...
         merged_keyword = " OR ".join([f'"{kw}"' for kw in keywords])
         search_keywords = [merged_keyword]  # Single merged keyword search
-        print(f"开始抓取列表页（共 {len(locations)} 个地点，使用合并关键词搜索：{len(keywords)} 个关键词合并为1个）")
+        print(f"Starting list page scraping ({len(locations)} locations, merged keyword search: {len(keywords)} keywords merged into 1)")
     else:
         search_keywords = keywords  # Search each keyword separately
-        print(f"开始抓取列表页（共 {len(locations)} 个地点，{len(keywords)} 个关键词）")
+        print(f"Starting list page scraping ({len(locations)} locations, {len(keywords)} keywords)")
     
-    print(f"从地点 {start_location_index+1}/{len(locations)} 关键词 {start_keyword_index+1}/{len(search_keywords)} 第 {start_page+1} 页继续")
-    print(f"已加载 {len(all_jobs)} 条职位，去重后 {initial_unique_count} 条唯一职位")
+    print(f"Resuming from location {start_location_index+1}/{len(locations)} keyword {start_keyword_index+1}/{len(search_keywords)} page {start_page+1}")
+    print(f"Loaded {len(all_jobs)} jobs, {initial_unique_count} unique jobs after deduplication")
     
     completed_locations = []
     completed_keywords = []
@@ -94,7 +94,7 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
         state_info = ""
         if ", " in location:
             state_code = location.split(", ")[-1]
-            state_info = f" (州: {state_code})"
+            state_info = f" (State: {state_code})"
         
         # If this is the current location, start from specified keyword
         start_from_keyword = start_keyword_index if loc_idx == start_location_index else 0
@@ -131,7 +131,7 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
                 
                 html = zenrows_get(url)
                 if not html:
-                    print(f"地点 {loc_idx+1}/{len(locations)} {location}: 第 {page + 1} 页抓取失败")
+                    print(f"Location {loc_idx+1}/{len(locations)} {location}: Page {page + 1} scraping failed")
                     continue
                 
                 soup = BeautifulSoup(html, 'html.parser')
@@ -176,19 +176,19 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
                     # New job, add to seen set and results
                     seen.add(key)
                     job = {
-                        "职位名称": job_title,
-                        "公司名称": company_name,
-                        "专业要求": '',
-                        "地点": job_location.get_text(strip=True) if job_location else location,
-                        "薪资要求": '',
-                        "年薪预估值": '',
-                        "工作描述": '',
-                        "团队规模/业务线规模": '',
-                        "公司规模": '',
-                        "职位发布时间": date['datetime'] if date and date.has_attr('datetime') else '',
-                        "职位状态": 'Active',
-                        "招聘平台": 'LinkedIn',
-                        "职位链接": link['href'] if link and link.has_attr('href') else ''
+                        "Job Title": job_title,
+                        "Company Name": company_name,
+                        "Requirements": '',
+                        "Location": job_location.get_text(strip=True) if job_location else location,
+                        "Salary Range": '',
+                        "Estimated Annual Salary": '',
+                        "Job Description": '',
+                        "Team Size/Business Line Size": '',
+                        "Company Size": '',
+                        "Posted Date": date['datetime'] if date and date.has_attr('datetime') else '',
+                        "Job Status": 'Active',
+                        "Platform": 'LinkedIn',
+                        "Job Link": link['href'] if link and link.has_attr('href') else ''
                     }
                     results.append(job)
                     page_jobs += 1
@@ -221,30 +221,30 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
             
             # Display location summary (only if new jobs found)
             if location_new_count > 0:
-                print(f"地点 {loc_idx+1}/{len(locations)} {location}: 新增 {location_new_count} 条，累计唯一 {len(seen)} 条")
+                print(f"Location {loc_idx+1}/{len(locations)} {location}: Added {location_new_count} jobs, total unique {len(seen)} jobs")
         
         # Progress reporting: every 10 locations or on last location
         if loc_idx + 1 - last_progress_report >= 10 or loc_idx + 1 == len(locations):
             progress_percent = ((loc_idx + 1) / len(locations)) * 100
-            print(f"[进度] 地点: {loc_idx + 1}/{len(locations)} ({progress_percent:.1f}%) - 累计唯一职位: {len(seen)} 条")
+            print(f"[Progress] Location: {loc_idx + 1}/{len(locations)} ({progress_percent:.1f}%) - Total unique jobs: {len(seen)} jobs")
             last_progress_report = loc_idx + 1
             
             # If limit reached (based on unique job count), end early
             if len(seen) >= LIST_LIMIT:
-                print(f"  已达到列表限制 {LIST_LIMIT} 条唯一职位，停止抓取")
+                print(f"  Reached list limit {LIST_LIMIT} unique jobs, stopping scraping")
                 break
     
     # Return deduplicated data (all_jobs already contains only unique jobs)
     final_unique_count = len(seen)
     total_fetched = len(all_jobs) + total_skipped
-    print(f"\n阶段1完成统计：")
-    print(f"  总抓取: {total_fetched} 条")
-    print(f"  唯一职位: {final_unique_count} 条")
-    print(f"  跳过重复: {total_skipped} 条")
+    print(f"\nStage 1 completion statistics:")
+    print(f"  Total scraped: {total_fetched} jobs")
+    print(f"  Unique jobs: {final_unique_count} jobs")
+    print(f"  Skipped duplicates: {total_skipped} jobs")
     if total_fetched > 0:
-        print(f"  重复率: {total_skipped/total_fetched*100:.1f}%")
+        print(f"  Duplicate rate: {total_skipped/total_fetched*100:.1f}%")
     else:
-        print(f"  重复率: 0%")
+        print(f"  Duplicate rate: 0%")
     
     return all_jobs, completed_locations, completed_keywords, len(locations), len(search_keywords), 0
 
@@ -252,7 +252,7 @@ def fetch_linkedin_list_with_checkpoint(keywords, locations, start_location_inde
 # Salary parsing and estimation (keep original logic)
 def parse_salary(salary_text):
     if not salary_text:
-        return ('未知', '')
+        return ('Unknown', '')
     
     text_lower = salary_text.lower()
     def extract_number(s):
@@ -278,7 +278,7 @@ def parse_salary(salary_text):
             numbers.append(num)
     
     if not numbers:
-        return ('未知', '')
+        return ('Unknown', '')
     
     is_annual = any(x in text_lower for x in ['year', 'annual', 'per annum', 'yr', '/yr', 'per year'])
     is_monthly = any(x in text_lower for x in ['month', 'mo', '/m', 'per month', 'monthly'])
@@ -301,23 +301,23 @@ def parse_salary(salary_text):
             annual_estimate = (min(numbers) + max(numbers)) / 2
         else:
             annual_estimate = numbers[0]
-        return ('年薪', round_to_tens(annual_estimate))
+        return ('yearly', round_to_tens(annual_estimate))
     elif is_monthly:
         if len(numbers) >= 2:
             monthly_avg = (min(numbers) + max(numbers)) / 2
             annual_estimate = monthly_avg * 12
         else:
             annual_estimate = numbers[0] * 12
-        return ('月薪', round_to_tens(annual_estimate))
+        return ('monthly', round_to_tens(annual_estimate))
     elif is_hourly:
         if len(numbers) >= 2:
             hourly_avg = (min(numbers) + max(numbers)) / 2
             annual_estimate = hourly_avg * 40 * 52
         else:
             annual_estimate = numbers[0] * 40 * 52
-        return ('时薪', round_to_tens(annual_estimate))
+        return ('hourly', round_to_tens(annual_estimate))
     else:
-        return ('未知', '')
+        return ('Unknown', '')
 
 
 # Company size scraping (keep original logic)
@@ -452,14 +452,14 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
     cache = load_cache()
     processed_urls = get_processed_urls()
     
-    print(f"\n开始抓取详情页（共 {len(job_list)} 条，从第 {start_index+1} 条开始）")
+    print(f"\nStarting detail page scraping ({len(job_list)} jobs total, starting from job {start_index+1})")
     
     consecutive_failures = 0  # Track consecutive failures
     last_report_index = start_index  # Track last report index
     
     # Simple progress bar function
     def print_progress(current, total, bar_length=30):
-        """打印简单的进度条"""
+        """Print simple progress bar"""
         percent = (current / total) * 100
         filled = int(bar_length * current / total)
         bar = '█' * filled + '░' * (bar_length - filled)
@@ -470,7 +470,7 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
         if idx < start_index:
             continue
         
-        job_url = job.get("职位链接")
+        job_url = job.get("Job Link")
         if not job_url:
             # Save checkpoint even if no URL (to track progress)
             if (idx + 1) % 5 == 0 or idx == len(job_list) - 1:
@@ -489,11 +489,11 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
         if not html:
             consecutive_failures += 1
             # Report each failure in PowerShell
-            print(f"[失败] 详情页 {idx + 1}/{len(job_list)}: 抓取失败 (连续失败 {consecutive_failures} 次)")
+            print(f"[Failed] Detail page {idx + 1}/{len(job_list)}: Scraping failed (consecutive failures: {consecutive_failures})")
             
             # Report after 3 consecutive failures
             if consecutive_failures >= 3:
-                print(f"⚠ 警告: 连续 {consecutive_failures} 次请求失败，请检查网络连接或API状态")
+                print(f"⚠ Warning: {consecutive_failures} consecutive request failures, please check network connection or API status")
             
             if (idx + 1) % 5 == 0 or idx == len(job_list) - 1:
                 save_checkpoint(
@@ -511,7 +511,7 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
         # Job description
         desc = soup.find('div', class_='show-more-less-html__markup')
         description = desc.get_text(separator=' ', strip=True) if desc else ''
-        job["工作描述"] = description
+        job["Job Description"] = description
 
         # Professional requirements
         requirements_text = ''
@@ -554,7 +554,7 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
             if re.search(r'\d+\+?\s*(?:years?|months?|yr)', first_half, re.I):
                 requirements_text = first_half[:500].strip()
         
-        job["专业要求"] = requirements_text
+        job["Requirements"] = requirements_text
 
         # Salary logic (keep original complete logic)
         salary_raw = ''
@@ -626,11 +626,11 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
                         if idx_pos >= 0:
                             context = text[max(0, idx_pos-30):idx_pos+len(cleaned)+30].lower()
                             if 'year' in context or 'annual' in context:
-                                return f"{cleaned} (年薪)"
+                                return f"{cleaned} (yearly)"
                             elif 'month' in context or 'monthly' in context:
-                                return f"{cleaned} (月薪)"
+                                return f"{cleaned} (monthly)"
                             elif 'hour' in context or 'hourly' in context:
-                                return f"{cleaned} (时薪)"
+                                return f"{cleaned} (hourly)"
                         return cleaned
                 
                 return text[:200]
@@ -639,30 +639,30 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
             
             if cleaned_salary:
                 salary_type, annual_estimate = parse_salary(cleaned_salary)
-                if '(年薪)' in cleaned_salary or '(月薪)' in cleaned_salary or '(时薪)' in cleaned_salary:
-                    job["薪资要求"] = cleaned_salary
-                elif salary_type != '未知':
-                    job["薪资要求"] = f"{cleaned_salary} ({salary_type})"
+                if '(yearly)' in cleaned_salary or '(monthly)' in cleaned_salary or '(hourly)' in cleaned_salary:
+                    job["Salary Range"] = cleaned_salary
+                elif salary_type != 'Unknown':
+                    job["Salary Range"] = f"{cleaned_salary} ({salary_type})"
                 else:
-                    job["薪资要求"] = cleaned_salary
+                    job["Salary Range"] = cleaned_salary
                 
                 if annual_estimate:
-                    job["年薪预估值"] = f"${annual_estimate}"
+                    job["Estimated Annual Salary"] = f"${annual_estimate}"
                 else:
-                    job["年薪预估值"] = ''
+                    job["Estimated Annual Salary"] = ''
             else:
-                job["薪资要求"] = ''
-                job["年薪预估值"] = ''
+                job["Salary Range"] = ''
+                job["Estimated Annual Salary"] = ''
         else:
-            job["薪资要求"] = ''
-            job["年薪预估值"] = ''
+            job["Salary Range"] = ''
+            job["Estimated Annual Salary"] = ''
 
         # Company size
         company_tag = soup.find('a', href=re.compile(r'/company/'))
         if company_tag:
             company_url = company_tag['href']
-            size = get_company_size(job["公司名称"], company_url, cache)
-            job["公司规模"] = size
+            size = get_company_size(job["Company Name"], company_url, cache)
+            job["Company Size"] = size
         
         # Save processed job
         add_processed_job(job)
@@ -670,7 +670,7 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
         # Progress reporting: every 50 jobs or on last job
         current_progress = idx + 1
         if current_progress - last_report_index >= 50 or current_progress == len(job_list):
-            print(f"\r{print_progress(current_progress, len(job_list))} - 已处理详情页", end='', flush=True)
+            print(f"\r{print_progress(current_progress, len(job_list))} - Detail pages processed", end='', flush=True)
             if current_progress == len(job_list):
                 print()  # New line when complete
             last_report_index = current_progress
@@ -685,6 +685,6 @@ def enrich_job_details_with_checkpoint(job_list, start_index=0):
 
         time.sleep(REQUEST_DELAY)
     
-    print(f"\n详情页抓取完成: 共处理 {len(job_list)} 条职位")
+    print(f"\nDetail page scraping completed: Processed {len(job_list)} jobs")
     return job_list
 

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Test run ID (output folder name)
-RUN_ID = "BunchTest017"
+RUN_ID = "BunchTest018"
 
 # Target site settings. Options: "linkedin", "indeed", "mixed" (mixed mode, not implemented yet)
 TARGET_SITE = "linkedin"
@@ -58,7 +58,7 @@ CACHE_FILE = f"{OUTPUT_DIR}/company_cache.json"
 
 # Country-specific output paths
 def get_country_output_paths(country_code: str):
-    """根据国家代码返回对应的输出路径"""
+    """Return output paths based on country code"""
     country_dir = f"{OUTPUT_DIR}/{country_code.upper()}"
     return {
         "dir": country_dir,
@@ -72,9 +72,9 @@ LIST_LIMIT = 20000
 DETAIL_LIMIT = 20000  
 # Field order (Excel output columns)
 FIELDS = [
-    "职位名称", "公司名称", "专业要求", "地点",
-    "薪资要求", "年薪预估值", "工作描述",
-    "团队规模/业务线规模", "公司规模",
-    "职位发布时间", "职位状态",
-    "招聘平台", "职位链接"
+    "Job Title", "Company Name", "Requirements", "Location",
+    "Salary Range", "Estimated Annual Salary", "Job Description",
+    "Team Size/Business Line Size", "Company Size",
+    "Posted Date", "Job Status",
+    "Platform", "Job Link"
 ]

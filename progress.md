@@ -74,7 +74,21 @@
 
 ## 进行中的任务
 
-无
+### 12. AI弱相关岗位抓取
+- 创建独立的抓取程序（main_ai_related.py）
+- 创建职位分类模块（job_classifier.py）
+- 创建合并和分类程序（merge_and_classify.py）
+- 创建新增职位详情抓取程序（enrich_new_jobs.py）
+- 创建最终合并和补全程序（merge_and_enrich_final.py）
+- 支持与BunchTest017数据合并去重
+
+### 13. 合并抓取程序（main_merged.py）
+- 一次运行完成核心岗位和弱相关岗位的抓取
+- 自动合并数据并添加relevance level标记（1=强相关，2=弱相关）
+- 自动添加职位标签和岗位级别字段
+- 支持独立的checkpoint管理（core和ai_related分别管理）
+- 当RUN_ID变化时自动清空旧的checkpoint
+- 输出格式严格按照merged_report_2.xlsx格式
 
 ## 最新更新
 
@@ -117,13 +131,18 @@
 ## 当前成果
 
 ### 代码文件
-- `main.py` - 主程序（支持checkpoint）
+- `main.py` - 主程序（支持checkpoint，抓取核心AI岗位）
+- `main_ai_related.py` - AI弱相关岗位抓取程序（独立运行）
+- `main_merged.py` - 合并抓取程序（一次运行完成核心+弱相关岗位抓取，自动合并输出）
 - `scraper_linkedin_checkpoint.py` - LinkedIn爬虫（支持checkpoint和合并关键词搜索，详情页进度汇报）
 - `scraper_indeed.py` - Indeed爬虫（原始版本）
 - `checkpoint_manager.py` - Checkpoint管理器
 - `exporter.py` - Excel导出模块
 - `config.py` - 配置文件（支持合并关键词搜索配置）
 - `locations_config.py` - 地点配置文件（491个地点，覆盖美国全境和国际主要城市）
+- `job_classifier.py` - 职位分类模块
+- `merge_and_classify.py` - 合并和分类程序
+- `merge_and_enrich_final.py` - 最终合并和补全程序
 
 ### 文档
 - `README.md` - 项目说明
