@@ -3,6 +3,8 @@
 A web scraping tool for collecting AI-related job postings from US job platforms (LinkedIn, Indeed).  
 Generates static Excel reports in the first phase, with potential for expansion into an automated quarterly scraping system.
 
+> ⚠️ **Important**: This tool is for educational and research purposes. Users are responsible for complying with all applicable laws, Terms of Service, and regulations. See [Usage Notes & Compliance](#important-usage-notes--compliance) section for details.
+
 ## Features
 
 - **Dual Job Category Scraping**: Scrapes both core AI jobs (high relevance) and AI-related jobs (low relevance) in one run
@@ -32,11 +34,19 @@ pip install -r requirements.txt
 
 1. Sign up for a ZenRows account at [https://www.zenrows.com/](https://www.zenrows.com/)
 2. Get your API key from the dashboard
-3. Create a `.env` file in the project root:
+3. Create a `.env` file in the project root (you can copy `.env.example` as a template):
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and add your API key:
 
 ```env
 ZENROWS_API_KEY=your_zenrows_api_key_here
 ```
+
+**Note**: The `.env` file is already in `.gitignore` and will not be committed to the repository. Never commit API keys or credentials to version control.
 
 ### 2. Configure Scraping Parameters
 
@@ -117,6 +127,41 @@ This will:
 3. **Stage C**: Merge, deduplicate, and generate final report
 
 Output will be saved to `outputs/{RUN_ID}/merged_report.xlsx`
+
+### Important Usage Notes & Compliance
+
+⚠️ **Legal and Ethical Considerations**
+
+Before using this software, please be aware of the following:
+
+1. **Terms of Service Compliance**
+   - **LinkedIn**: This tool accesses LinkedIn through proxy services. Users must comply with LinkedIn's Terms of Service and User Agreement. Automated scraping may violate LinkedIn's terms.
+   - **Indeed**: Similar considerations apply to Indeed's Terms of Service.
+   - **ZenRows**: Users must comply with ZenRows' Terms of Service and usage policies.
+
+2. **User Responsibility**
+   - Users are **solely responsible** for ensuring their use of this software complies with:
+     - All applicable laws and regulations in their jurisdiction
+     - Terms of Service of target platforms (LinkedIn, Indeed)
+     - Terms of Service of third-party services (ZenRows)
+     - Data protection and privacy laws (GDPR, CCPA, etc.)
+
+3. **Rate Limiting & Ethical Use**
+   - The software includes rate limiting (`REQUEST_DELAY`) to reduce server load
+   - Users should respect rate limits and not abuse the services
+   - Excessive requests may result in IP bans or account suspension
+
+4. **Data Usage**
+   - Collected data should be used responsibly and in compliance with applicable laws
+   - Users must respect privacy rights and data protection regulations
+   - Do not use collected data for spam, harassment, or other unethical purposes
+
+5. **No Warranty**
+   - This software is provided "as is" without warranty
+   - The authors make no representations about the legality of web scraping
+   - Users assume all legal and financial responsibility for their use
+
+**By using this software, you acknowledge that you have read, understood, and agree to comply with all applicable terms, laws, and regulations.**
 
 ### Output Format
 
@@ -239,8 +284,33 @@ outputs/
 
 ## License
 
-[Add your license here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### Important Legal Notices
+
+The MIT License applies to the software code. However, users must also comply with:
+
+- **Third-Party Service Terms**: Terms of Service of ZenRows, LinkedIn, and Indeed
+- **Applicable Laws**: All local, state, and federal laws regarding web scraping and data collection
+- **Data Protection Regulations**: GDPR, CCPA, and other privacy laws as applicable
+
+**Users are solely responsible for ensuring legal compliance.** The authors and contributors are not liable for any misuse or legal issues arising from the use of this software.
 
 ## Contributing
 
-[Add contribution guidelines here]
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Contribution Guidelines
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+### Code Style
+
+- Follow PEP 8 Python style guidelines
+- Add comments for complex logic
+- Update documentation (README.md) for new features
+- Ensure all output messages are in English
