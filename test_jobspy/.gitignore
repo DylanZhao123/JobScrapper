@@ -1,0 +1,19 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Output directories
+output/
+
+# Checkpoint files
+*.checkpoint.json
+
+# Excel and JSON data files
+*.xlsx
+*.json
+!requirements.json
+
+# Environment
+.env
+.env.local
