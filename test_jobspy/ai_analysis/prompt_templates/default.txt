@@ -1,0 +1,27 @@
+Analyze this job posting and provide structured insights.
+
+**Job Title:** {title}
+**Company:** {company}
+**Location:** {location}
+**Salary:** {salary_range}
+
+**Description:**
+{description}
+
+Please analyze and respond in JSON format with the following structure:
+{{
+    "job_category": "string - categorize the job (e.g., ML Engineer, Data Scientist, AI Researcher, etc.)",
+    "seniority_level": "string - Junior/Mid/Senior/Lead/Principal/Director",
+    "required_skills": ["list", "of", "key", "technical", "skills"],
+    "nice_to_have_skills": ["list", "of", "optional", "skills"],
+    "years_experience_required": "string - e.g., '3-5 years' or 'Not specified'",
+    "education_required": "string - e.g., 'Bachelor's in CS' or 'PhD preferred'",
+    "remote_policy": "string - Remote/Hybrid/On-site/Not specified",
+    "key_responsibilities": ["list", "of", "main", "responsibilities"],
+    "company_stage": "string - Startup/Scaleup/Enterprise/Not specified",
+    "ai_ml_focus_areas": ["list", "of", "AI/ML", "domains", "mentioned"],
+    "is_chinese_company_overseas": "boolean - true if this appears to be a Chinese company expanding overseas (中国企业出海), false otherwise. Look for indicators like: Chinese company names, headquarters in China, Chinese parent company, mentions of China operations, or known Chinese tech companies like ByteDance, Alibaba, Tencent, Huawei, Xiaomi, BYD, DJI, etc.",
+    "analysis_notes": "string - any additional insights or red flags"
+}}
+
+Respond ONLY with valid JSON, no additional text.

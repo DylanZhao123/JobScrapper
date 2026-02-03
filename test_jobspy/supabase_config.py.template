@@ -1,0 +1,33 @@
+# -*- coding: utf-8 -*-
+"""
+Supabase Configuration Template
+Copy this file to supabase_config.py and fill in your actual values
+DO NOT commit supabase_config.py to version control (add to .gitignore)
+"""
+
+# Supabase Project URL
+# Get this from: Supabase Dashboard -> Settings -> API -> Project URL
+SUPABASE_URL = "https://your-project-id.supabase.co"
+
+# Supabase Anon Public Key
+# Get this from: Supabase Dashboard -> Settings -> API -> Project API keys -> anon public
+SUPABASE_KEY = "your-anon-public-key-here"
+
+# Supabase Service Role Key (Optional, for admin operations)
+# Get this from: Supabase Dashboard -> Settings -> API -> Project API keys -> service_role secret
+# WARNING: This key has full access, keep it secret!
+SUPABASE_SERVICE_KEY = "your-service-role-key-here"
+
+# Enable Supabase storage
+ENABLE_SUPABASE = True
+
+# Table name mapping for regions
+# Maps region names to Supabase table names
+REGION_TABLE_MAP = {
+    "United States": "jobs_united_states",
+    "United Kingdom": "jobs_united_kingdom",
+    "Australia": "jobs_australia",
+    "Hong Kong": "jobs_hong_kong",
+    "Singapore": "jobs_singapore",
+}
+

@@ -1,0 +1,30 @@
+# Core dependencies for JobSpy scraper
+# Note: numpy version may need adjustment for Python 3.13
+# If installation fails, try: pip install numpy --only-binary :all:
+pandas>=2.0.0
+numpy>=2.0.0  # Updated for Python 3.13 compatibility
+requests>=2.31.0
+openpyxl>=3.1.0  # For Excel file support
+
+# JobSpy - main scraping library
+# Note: numpy version conflict - jobspy requires 1.26.3 but we use 2.4.0 (usually works)
+# Install jobspy with: pip install python-jobspy --no-deps
+# Then install its dependencies manually
+python-jobspy>=1.0.0
+pydantic>=2.0.0  # Required by jobspy
+markdownify>=0.13.1,<0.14.0  # Required by jobspy
+regex>=2024.4.28,<2025.0.0  # Required by jobspy
+tls-client>=1.0.1,<2.0.0  # Required by jobspy
+
+# Data analysis and visualization (for analysis scripts)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+python-docx>=1.1.0  # For Word document generation
+
+# Optional but recommended
+beautifulsoup4>=4.12.0  # For HTML parsing (if needed)
+lxml>=4.9.0  # For XML/HTML parsing
+
+# Supabase integration
+supabase>=2.0.0  # For database storage
+
